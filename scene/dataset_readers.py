@@ -8,7 +8,6 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
-
 import os
 import sys
 from PIL import Image
@@ -22,6 +21,39 @@ from pathlib import Path
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
+import torch
+
+
+trans_t = lambda t : np.array([
+    [1,0,0,0],
+    [0,1,0,0],
+    [0,0,1,t],
+    [0,0,0,1]]).float()
+
+rot_phi = lambda phi : np.array([
+    [1,0,0,0],
+    [0,np.cos(phi),-np.sin(phi),0],
+    [0,np.sin(phi), np.cos(phi),0],
+    [0,0,0,1]]).float()
+
+rot_theta = lambda th : np.array([
+    [np.cos(th),0,-np.sin(th),0],
+    [0,1,0,0],
+    [np.sin(th),0, np.cos(th),0],
+    [0,0,0,1]]).float()
+
+def pose_spherical(theta, phi, radius):
+    '''
+    theta: 方位角
+    phi: 极角
+    radius: 半径
+    '''
+    c2w = trans_t(radius)
+    c2w = rot_phi(phi/180.*np.pi) @ c2w
+    c2w = rot_theta(theta/180.*np.pi) @ c2w
+    c2w = np.array([[-1,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,1]]) @ c2w
+    return c2w
+
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -41,6 +73,8 @@ class SceneInfo(NamedTuple):
     test_cameras: list
     nerf_normalization: dict
     ply_path: str
+    #! add
+    video_cameras: list
 
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):
@@ -104,6 +138,51 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
     sys.stdout.write('\n')
     return cam_infos
 
+#! add
+def generate_render_poses(cam_extrinsics, cam_intrinsics, images_folder):
+    # load one image to get necessary info
+    for idx, key in enumerate(cam_extrinsics):
+        extr = cam_extrinsics[key]
+        intr = cam_intrinsics[extr.camera_id]
+        height = intr.height
+        width = intr.width
+
+        uid = intr.id
+        R = np.transpose(qvec2rotmat(extr.qvec))
+        T = np.array(extr.tvec)
+
+        if intr.model=="SIMPLE_PINHOLE":
+            focal_length_x = intr.params[0]
+            FovY = focal2fov(focal_length_x, height)
+            FovX = focal2fov(focal_length_x, width)
+        elif intr.model=="PINHOLE":
+            focal_length_x = intr.params[0]
+            focal_length_y = intr.params[1]
+            FovY = focal2fov(focal_length_y, height)
+            FovX = focal2fov(focal_length_x, width)
+        else:
+            assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
+        
+        image_path = os.path.join(images_folder, os.path.basename(extr.name))
+        # image_name = os.path.basename(image_path).split(".")[0]
+        image = Image.open(image_path)
+        
+        break
+    
+    # generate render pose list for video rendering
+    render_poses = [pose_spherical(angle, -30.0, 4.0) for angle in np.linspace(-180,180,40+1)[:-1]]
+    cam_infos = []
+    for idx,  pose in render_poses:
+        w2c = np.linalg.inv(pose)
+        R = w2c[:3, :3].T * (-1)
+        R[:, 0] = -R[:, 0]
+        T = -w2c[:3, 3]
+        cam_info = CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
+                              image_path=None, image_name=None, width=width, height=height)
+        cam_infos.append(cam_info)
+
+    return cam_infos
+
 def fetchPly(path):
     plydata = PlyData.read(path)
     vertices = plydata['vertex']
@@ -151,6 +230,9 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
+    
+    #! add
+    video_cam_infos = generate_render_poses(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
@@ -172,6 +254,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
+                           video_cameras=video_cam_infos,
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path)
     return scene_info
