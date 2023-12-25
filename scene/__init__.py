@@ -17,6 +17,8 @@ from scene.dataset_readers import sceneLoadTypeCallbacks
 from scene.gaussian_model import GaussianModel
 from arguments import ModelParams
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
+from imgviz import label_colormap
+import torch
 
 class Scene:
 
@@ -29,7 +31,12 @@ class Scene:
         self.model_path = args.model_path
         self.loaded_iter = None
         self.gaussians = gaussians
-
+        #! add color map
+        colour_map_np = label_colormap(101)[gaussians.num_valid_semantic_class] # select the existing class from total colour map
+        self.colour_map = torch.from_numpy(colour_map_np)
+        self.valid_colour_map  = torch.from_numpy(colour_map_np[1:,:]) # exclude the first colour map to colourise rendered segmentation without void index
+        self.valid_colour_map = self.valid_colour_map.cuda()
+        
         if load_iteration:
             if load_iteration == -1:
                 self.loaded_iter = searchForMaxIteration(os.path.join(self.model_path, "point_cloud"))
@@ -73,9 +80,9 @@ class Scene:
             self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args)
             print("Loading Test Cameras")
             self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args)
-            #! add
-            print("Generating Video Cameras")
-            self.video_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.video_cameras, resolution_scale, args)
+            # #! add
+            # print("Generating Video Cameras")
+            # self.video_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.video_cameras, resolution_scale, args)
 
         if self.loaded_iter:
             self.gaussians.load_ply(os.path.join(self.model_path,
@@ -95,6 +102,6 @@ class Scene:
     def getTestCameras(self, scale=1.0):
         return self.test_cameras[scale]
     
-    #! add
-    def getVideoCameras(self, scale=1.0):
-        return self.video_cameras[scale]
+    # #! add
+    # def getVideoCameras(self, scale=1.0):
+    #     return self.video_cameras[scale]

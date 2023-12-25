@@ -41,7 +41,7 @@ class GaussianModel:
         self.rotation_activation = torch.nn.functional.normalize
 
 
-    def __init__(self, sh_degree : int):
+    def __init__(self, sh_degree : int, num_semantic_classes=32):
         self.active_sh_degree = 0
         self.max_sh_degree = sh_degree  
         self._xyz = torch.empty(0)
@@ -56,6 +56,9 @@ class GaussianModel:
         self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
+        #! add
+        self.num_valid_semantic_class = num_semantic_classes
+        self.sem_logits = torch.empty(0)
         self.setup_functions()
 
     def capture(self):
@@ -114,6 +117,11 @@ class GaussianModel:
     def get_opacity(self):
         return self.opacity_activation(self._opacity)
     
+    #! add
+    @property
+    def get_semantic(self):
+        return self._sem_logits
+    
     def get_covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
 
@@ -121,6 +129,10 @@ class GaussianModel:
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
 
+    #! add
+    def random_sem_logits(self, num_points, num_semantic_classes):
+        return torch.randn((num_points, num_semantic_classes), device="cuda")
+    
     def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
         self.spatial_lr_scale = spatial_lr_scale
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
@@ -131,7 +143,7 @@ class GaussianModel:
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
-        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
+        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).floa2t().cuda()), 0.0000001)
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
@@ -145,6 +157,8 @@ class GaussianModel:
         self._rotation = nn.Parameter(rots.requires_grad_(True))
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+        #! add
+        self._sem_logits = nn.Parameter(self.random_sem_logits(fused_point_cloud.shape[0], self.num_valid_semantic_class).requires_grad_(True))
 
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
@@ -254,6 +268,9 @@ class GaussianModel:
         self._rotation = nn.Parameter(torch.tensor(rots, dtype=torch.float, device="cuda").requires_grad_(True))
 
         self.active_sh_degree = self.max_sh_degree
+        
+        #! add
+        self._sem_logits = nn.Parameter(self.random_sem_logits(xyz.shape[0], self.num_valid_semantic_class).requires_grad_(True))        
 
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}

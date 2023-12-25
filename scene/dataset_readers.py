@@ -73,8 +73,8 @@ class SceneInfo(NamedTuple):
     test_cameras: list
     nerf_normalization: dict
     ply_path: str
-    #! add
-    video_cameras: list
+    # #! add
+    # video_cameras: list
 
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):
@@ -231,8 +231,8 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         train_cam_infos = cam_infos
         test_cam_infos = []
     
-    #! add
-    video_cam_infos = generate_render_poses(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+    # #! add
+    # video_cam_infos = generate_render_poses(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
@@ -254,7 +254,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
-                           video_cameras=video_cam_infos,
+                        #    video_cameras=video_cam_infos,
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path)
     return scene_info
