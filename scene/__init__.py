@@ -32,10 +32,10 @@ class Scene:
         self.loaded_iter = None
         self.gaussians = gaussians
         #! add color map
-        colour_map_np = label_colormap(101)[gaussians.num_valid_semantic_class] # select the existing class from total colour map
-        self.colour_map = torch.from_numpy(colour_map_np)
-        self.valid_colour_map  = torch.from_numpy(colour_map_np[1:,:]) # exclude the first colour map to colourise rendered segmentation without void index
-        self.valid_colour_map = self.valid_colour_map.cuda()
+        colour_map_np = label_colormap(gaussians.num_valid_semantic_class+1) # select the existing class from total colour map
+        self.colour_map = torch.from_numpy(colour_map_np).cuda()
+        # self.valid_colour_map  = torch.from_numpy(colour_map_np[1:,:]) # exclude the first colour map to colourise rendered segmentation without void index
+        # self.valid_colour_map = self.valid_colour_map.cuda()
         
         if load_iteration:
             if load_iteration == -1:

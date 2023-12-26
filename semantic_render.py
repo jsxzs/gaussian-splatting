@@ -20,8 +20,10 @@ from utils.general_utils import safe_state
 from argparse import ArgumentParser
 from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
+import sys
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background, color_map):
+    logits_2_label = lambda x: torch.argmax(torch.nn.functional.softmax(x, dim=0), dim=0)
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "semantic_label")
     # gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
 
@@ -30,16 +32,17 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
         rendering = render(view, gaussians, pipeline, background)["semantic"]
-        vis_sem = color_map[rendering]
+        semantic = logits_2_label(rendering)
+        vis_sem = color_map[semantic] / 255.0
         # gt = view.original_image[0:3, :, :]
-        torchvision.utils.save_image(vis_sem, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
+        torchvision.utils.save_image(vis_sem.permute([2, 0, 1]), os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
         # torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
 
 def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool):
     with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree)
         scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
-        color_map = scene.valid_colour_map
+        color_map = scene.colour_map
 
         bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")

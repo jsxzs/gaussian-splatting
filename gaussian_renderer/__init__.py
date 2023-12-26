@@ -89,14 +89,14 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         shs = shs,
         colors_precomp = colors_precomp,
         opacities = opacity,
-        sem_logits = pc.sem_logits,
+        sem_logits = pc.get_semantic,
         scales = scales,
         rotations = rotations,
         cov3D_precomp = cov3D_precomp)
 
-    #! add
-    logits_2_label = lambda x: torch.argmax(torch.nn.functional.softmax(x, dim=-1),dim=-1)
-    semantic = logits_2_label(accum_sem_logits)
+    # #! add
+    # logits_2_label = lambda x: torch.argmax(torch.nn.functional.softmax(x, dim=-1),dim=-1)
+    # semantic = logits_2_label(accum_sem_logits)
     
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
@@ -104,4 +104,4 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
             "radii": radii,
-            "semantic": semantic}
+            "semantic": accum_sem_logits}
