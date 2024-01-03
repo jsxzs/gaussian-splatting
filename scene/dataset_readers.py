@@ -21,7 +21,8 @@ from pathlib import Path
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
-import torch
+from arguments import ModelParams
+import torch, math
 
 
 trans_t = lambda t : np.array([
@@ -66,6 +67,8 @@ class CameraInfo(NamedTuple):
     image_name: str
     width: int
     height: int
+    # semantic info
+    semantic: np.array
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -73,8 +76,10 @@ class SceneInfo(NamedTuple):
     test_cameras: list
     nerf_normalization: dict
     ply_path: str
-    # #! add
-    # video_cameras: list
+    # semantic info
+    # semantic_classes: torch.Tensor
+    # num_semantic_class: int
+    # num_valid_semantic_class: int
 
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):
@@ -133,7 +138,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image = Image.open(image_path)
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=image_name, width=width, height=height)
+                              image_path=image_path, image_name=image_name, width=width, height=height, semantic=None)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
     return cam_infos
@@ -337,7 +342,69 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
                            ply_path=ply_path)
     return scene_info
 
+def readReplicaCameras(samples, num_sample):
+    cam_infos = []
+    
+    for idx in range(num_sample):
+        image_path = samples['image_path'][idx]
+        image_name = os.path.basename(image_path).split('.')[0]
+        image = samples["image"][idx]
+        image = Image.fromarray(image)
+        semantic = samples["semantic_remap"][idx]
+        semantic = Image.fromarray(semantic)
+        
+        # The provided poses are camera to world poses
+        # the camera coordinates follows OpenCV/Colmap convention (x-right, y-down,z-towards screen)
+        c2w = samples["T_wc"][idx]
+        
+        # get the world-to-camera transform and set R, T
+        w2c = np.linalg.inv(c2w)
+        R = np.transpose(w2c[:3,:3])  # R is stored transposed due to 'glm' in CUDA code
+        T = w2c[:3, 3]
+        
+        width = image.size[0]
+        height = image.size[1]
+        FovX = math.radians(90)
+        FovY = focal2fov(fov2focal(FovX, width), height)
+        
+        cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
+                        image_path=image_path, image_name=image_name, width=width, height=height, semantic=semantic))
+            
+    return cam_infos
+
+def readReplicaInfo(args: ModelParams, data):
+    train_cam_infos = readReplicaCameras(data.train_samples, data.train_num)
+    test_cam_infos = readReplicaCameras(data.test_samples, data.test_num)
+    
+    nerf_normalization = getNerfppNorm(train_cam_infos)
+    
+    ply_path = os.path.join(args.source_path, "points3d.ply")
+    if not os.path.exists(ply_path):
+        # Since Replica dataset has no colmap data, we start with random points
+        num_pts = 100_000
+        print(f"Generating random point cloud ({num_pts})...")
+        
+        # We create random points inside the bounds of the synthetic Blender scenes
+        xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
+        shs = np.random.random((num_pts, 3)) / 255.0
+        pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
+
+        storePly(ply_path, xyz, SH2RGB(shs) * 255)
+    try:
+        pcd = fetchPly(ply_path)
+    except:
+        pcd = None
+  
+    scene_info = SceneInfo(point_cloud=pcd,
+                            train_cameras=train_cam_infos,
+                            test_cameras=test_cam_infos,
+                            nerf_normalization=nerf_normalization,
+                            ply_path=ply_path)
+    return scene_info
+
+
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
-    "Blender" : readNerfSyntheticInfo
+    "Blender" : readNerfSyntheticInfo,
+    "Replica": readReplicaInfo
 }

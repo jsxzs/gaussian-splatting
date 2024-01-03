@@ -13,6 +13,17 @@ import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
 from math import exp
+import torch.nn as nn
+
+def crossentropy_loss(network_output, gt):
+    """
+    Args:
+        network_output (Tensor): shape (num_sem_classes, width, height)
+        gt (Tensor): shape (1, width, height)
+    """
+    CrossEntropyLoss = nn.CrossEntropyLoss(ignore_index=-1)
+    # replica has void class of ID==0, gt-1 to shift void class to -1
+    return CrossEntropyLoss(network_output[None, ...], gt.long() - 1)
 
 def l1_loss(network_output, gt):
     return torch.abs((network_output - gt)).mean()

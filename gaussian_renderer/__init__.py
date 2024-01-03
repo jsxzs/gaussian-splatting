@@ -36,7 +36,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     raster_settings = GaussianRasterizationSettings(
         image_height=int(viewpoint_camera.image_height),
         image_width=int(viewpoint_camera.image_width),
-        num_semantic_class = int(pc.num_valid_semantic_class),
+        num_semantic_class = int(pc.num_sem_classes),
         tanfovx=tanfovx,
         tanfovy=tanfovy,
         bg=bg_color,
@@ -83,20 +83,16 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
-    rendered_image, accum_sem_logits, radii = rasterizer(
+    rendered_image, rendered_sem_logits, radii = rasterizer(
         means3D = means3D,
         means2D = means2D,
         shs = shs,
         colors_precomp = colors_precomp,
-        opacities = opacity,
         sem_logits = pc.get_semantic,
+        opacities = opacity,
         scales = scales,
         rotations = rotations,
         cov3D_precomp = cov3D_precomp)
-
-    # #! add
-    # logits_2_label = lambda x: torch.argmax(torch.nn.functional.softmax(x, dim=-1),dim=-1)
-    # semantic = logits_2_label(accum_sem_logits)
     
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
@@ -104,4 +100,4 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
             "radii": radii,
-            "semantic": accum_sem_logits}
+            "semantic": rendered_sem_logits}

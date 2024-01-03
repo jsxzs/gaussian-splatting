@@ -52,8 +52,22 @@ class ModelParams(ParamGroup):
         self._images = "images"
         self._resolution = -1
         self._white_background = False
+        self.enable_semantic = False
         self.data_device = "cuda"
         self.eval = False
+        # sparse-views
+        self.sparse_views = False
+        self.sparse_ratio = 0.0
+        self.label_map_ids = []
+        self.random_sample = False
+        self.load_saved = False
+        # parser.add_argument("--sparse_views", action='store_true',
+        #                     help='Use labels from a sparse set of frames')
+        # parser.add_argument("--sparse_ratio", type=float, default=0,
+        #                     help='The portion of dropped labelling frames during training, which can be used along with all working modes.')    
+        # parser.add_argument("--label_map_ids", nargs='*', type=int, default=[],
+        #                     help='In sparse view mode, use selected frame ids from sequences as supervision.')
+        # parser.add_argument("--random_sample", action='store_true', help='Whether to randomly/evenly sample frames from the sequence.')
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
@@ -76,11 +90,13 @@ class OptimizationParams(ParamGroup):
         self.position_lr_delay_mult = 0.01
         self.position_lr_max_steps = 30_000
         self.feature_lr = 0.0025
+        self.semantic_lr = 0.0005
         self.opacity_lr = 0.05
         self.scaling_lr = 0.005
         self.rotation_lr = 0.001
         self.percent_dense = 0.01
         self.lambda_dssim = 0.2
+        self.weight_sem_loss = 4e-2
         self.densification_interval = 100
         self.opacity_reset_interval = 3000
         self.densify_from_iter = 500
